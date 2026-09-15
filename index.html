@@ -1,0 +1,1466 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0C0B09" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>余烬 · 吸烟模拟</title>
+  <style>
+/* 余烬 — design tokens
+   ink #0C0B09 · paper #E8DCC8 · ember #FF6B2C · ash #6B6560 · gold #C9A227 */
+
+:root {
+  --ink: #0c0b09;
+  --ink-2: #161412;
+  --paper: #e8dcc8;
+  --paper-dim: #a89880;
+  --ember: #ff6b2c;
+  --ember-hot: #ffb36b;
+  --ash: #6b6560;
+  --gold: #c9a227;
+  --smoke: rgba(220, 220, 210, 0.12);
+  --line: rgba(232, 220, 200, 0.12);
+  --danger: #e2554a;
+  --ok: #7dba6a;
+  --font-display: "Songti SC", "STSong", "SimSun", "Noto Serif SC", Georgia, serif;
+  --font-body: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --tap: 48px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 70% at 50% 18%, rgba(255, 107, 44, 0.07), transparent 55%),
+    radial-gradient(80% 50% at 50% 100%, rgba(20, 16, 12, 0.9), transparent),
+    var(--ink);
+  user-select: none;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* —— top —— */
+.top-bar {
+  position: absolute;
+  top: calc(12px + var(--safe-t));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.brand-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+  cursor: pointer;
+  min-height: var(--tap);
+  padding: 6px 12px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(12, 11, 9, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.brand-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #b3131b, #8a0f15);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(201, 162, 39, 0.45);
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  color: var(--paper);
+}
+
+.len-readout {
+  text-align: right;
+  pointer-events: none;
+}
+
+.len-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--paper-dim);
+  margin-bottom: 2px;
+}
+
+.len-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--ember-hot);
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— hint —— */
+.hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28%;
+  text-align: center;
+  z-index: 4;
+  pointer-events: none;
+  padding: 0 28px;
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.hint.hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.hint p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(232, 220, 200, 0.55);
+  letter-spacing: 0.04em;
+}
+
+/* —— bottom controls —— */
+.controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 16px 16px calc(18px + var(--safe-b));
+  background: linear-gradient(to top, rgba(12, 11, 9, 0.92) 30%, transparent);
+}
+
+.meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.meter {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.meter-label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--paper-dim);
+  min-width: 28px;
+}
+
+.meter-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(232, 220, 200, 0.1);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  transition: width 80ms linear;
+}
+
+.meter-fill.ash {
+  background: linear-gradient(90deg, #4a4540, var(--ash));
+}
+
+.meter-fill.suck {
+  background: linear-gradient(90deg, #8a3a18, var(--ember), var(--ember-hot));
+  box-shadow: 0 0 8px rgba(255, 107, 44, 0.45);
+}
+
+.btn-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.btn {
+  min-height: var(--tap);
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(232, 220, 200, 0.04);
+  color: var(--paper);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  padding: 10px 8px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease, color 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.btn.primary {
+  background: linear-gradient(160deg, rgba(255, 107, 44, 0.22), rgba(255, 107, 44, 0.08));
+  border-color: rgba(255, 107, 44, 0.45);
+  color: var(--ember-hot);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+}
+
+.btn.primary[aria-pressed="true"] {
+  background: linear-gradient(160deg, rgba(125, 186, 106, 0.18), rgba(125, 186, 106, 0.06));
+  border-color: rgba(125, 186, 106, 0.45);
+  color: var(--ok);
+}
+
+.btn.ghost {
+  color: var(--paper-dim);
+}
+
+.btn.ghost:hover,
+.btn.ghost:focus-visible {
+  color: var(--paper);
+  border-color: rgba(232, 220, 200, 0.28);
+}
+
+.btn.icon {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 22px;
+  line-height: 1;
+  border: none;
+  color: var(--paper-dim);
+}
+
+.status {
+  margin: 12px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+  letter-spacing: 0.03em;
+  min-height: 1.5em;
+}
+
+.status.live {
+  color: var(--ok);
+}
+
+.status.warn {
+  color: var(--danger);
+}
+
+/* —— brand sheet —— */
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.sheet-backdrop[hidden],
+.sheet[hidden] {
+  display: none !important;
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 21;
+  max-height: min(72dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  background: #141210;
+  border-top: 1px solid rgba(232, 220, 200, 0.1);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 16px calc(20px + var(--safe-b));
+  box-shadow: 0 -20px 50px rgba(0, 0, 0, 0.55);
+  animation: sheet-up 0.28s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(28px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(232, 220, 200, 0.18);
+  margin: 6px auto 10px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--paper);
+}
+
+.brand-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  flex: 1;
+}
+
+.brand-card {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  min-height: 64px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(232, 220, 200, 0.03);
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.brand-card:active {
+  transform: scale(0.98);
+}
+
+.brand-card:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.brand-card.active {
+  border-color: rgba(201, 162, 39, 0.65);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.pack {
+  width: 36px;
+  height: 48px;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.pack::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.25), transparent);
+}
+
+.pack-stripe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 38%;
+  height: 10%;
+  background: var(--gold);
+  opacity: 0.9;
+}
+
+.brand-meta strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--paper);
+  margin-bottom: 2px;
+}
+
+.brand-meta span {
+  font-size: 11px;
+  color: var(--paper-dim);
+  letter-spacing: 0.04em;
+}
+
+.sheet-note {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(232, 220, 200, 0.35);
+  letter-spacing: 0.04em;
+}
+
+/* shake flash */
+.app.shaking #scene {
+  animation: nudge 0.35s ease;
+}
+
+@keyframes nudge {
+  0% { transform: translate3d(0, 0, 0); }
+  25% { transform: translate3d(-3px, 2px, 0) rotate(-0.4deg); }
+  50% { transform: translate3d(3px, -2px, 0) rotate(0.4deg); }
+  75% { transform: translate3d(-2px, 1px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+  .app.shaking #scene {
+    animation: none;
+  }
+  .hint,
+  .meter-fill {
+    transition: none;
+  }
+}
+
+@media (min-width: 480px) {
+  .app {
+    box-shadow: 0 0 0 1px rgba(232, 220, 200, 0.08);
+  }
+}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <canvas id="scene" aria-hidden="true"></canvas>
+
+    <header class="top-bar">
+      <div class="brand-chip" id="brandChip">
+        <span class="brand-swatch" id="brandSwatch"></span>
+        <span class="brand-name" id="brandName">中华</span>
+      </div>
+      <div class="len-readout" id="lenReadout">
+        <span class="len-label">余量</span>
+        <span class="len-value" id="lenValue">100%</span>
+      </div>
+    </header>
+
+    <section class="hint" id="hint" aria-live="polite">
+      <p id="hintText">点下方按钮开启麦克风，对着手机底部轻吸</p>
+    </section>
+
+    <footer class="controls">
+      <div class="meters">
+        <div class="meter">
+          <span class="meter-label">烟灰</span>
+          <div class="meter-track"><div class="meter-fill ash" id="ashBar"></div></div>
+        </div>
+        <div class="meter">
+          <span class="meter-label">吸力</span>
+          <div class="meter-track"><div class="meter-fill suck" id="suckBar"></div></div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button type="button" class="btn ghost" id="btnShake" title="模拟抖落烟灰">
+          抖灰
+        </button>
+        <button type="button" class="btn primary" id="btnMic" aria-pressed="false">
+          开麦克风
+        </button>
+        <button type="button" class="btn ghost" id="btnBrand">
+          换烟
+        </button>
+      </div>
+
+      <p class="status" id="status">已点燃 · 开麦克风后对着底部轻吸</p>
+    </footer>
+
+    <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+    <aside class="sheet" id="brandSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <header class="sheet-head">
+        <h2 id="sheetTitle">选择品牌</h2>
+        <button type="button" class="btn icon" id="btnCloseSheet" aria-label="关闭">×</button>
+      </header>
+      <div class="brand-grid" id="brandGrid"></div>
+      <p class="sheet-note">仅作视觉模拟，请勿在现实中点燃使用。</p>
+    </aside>
+  </div>
+
+  <script>
+/* 余烬 — mobile smoking simulator */
+(() => {
+  "use strict";
+
+  // ── brands ──────────────────────────────────────────────
+  const BRANDS = [
+    {
+      id: "zhonghua",
+      name: "中华",
+      sub: "硬中华 · 烤烟",
+      pack: ["#b3131b", "#8a0f15"],
+      stripe: "#c9a227",
+      filter: ["#c9a227", "#a8841a"],
+      paper: "#f3ebe0",
+      tipGlow: "#ff7a3d",
+      burnRate: 1.0,
+      ashStick: 1.15,
+    },
+    {
+      id: "yuxi",
+      name: "玉溪",
+      sub: "软玉溪 · 清香",
+      pack: ["#1f4f8c", "#0f2f5a"],
+      stripe: "#e8e4d8",
+      filter: ["#d8c9a8", "#b8a888"],
+      paper: "#f7f2e8",
+      tipGlow: "#ff8a4a",
+      burnRate: 0.95,
+      ashStick: 1.05,
+    },
+    {
+      id: "huanghelou",
+      name: "黄鹤楼",
+      sub: "软蓝楼 · 雅香",
+      pack: ["#c45c12", "#8a3a08"],
+      stripe: "#f0d48a",
+      filter: ["#d4a574", "#b88654"],
+      paper: "#f4ebe0",
+      tipGlow: "#ff9a50",
+      burnRate: 1.05,
+      ashStick: 1.0,
+    },
+    {
+      id: "furongwang",
+      name: "芙蓉王",
+      sub: "硬蓝 · 醇和",
+      pack: ["#1a3a6e", "#0c2248"],
+      stripe: "#c0c8d4",
+      filter: ["#2a4a7e", "#1a3058"],
+      paper: "#f5f0e6",
+      tipGlow: "#ff7a40",
+      burnRate: 1.0,
+      ashStick: 1.1,
+    },
+    {
+      id: "liqun",
+      name: "利群",
+      sub: "软红 · 浓香",
+      pack: ["#c41e1e", "#8a1010"],
+      stripe: "#e8c84a",
+      filter: ["#d8b890", "#b89870"],
+      paper: "#f6efe4",
+      tipGlow: "#ff6b2c",
+      burnRate: 1.1,
+      ashStick: 0.95,
+    },
+    {
+      id: "suyan",
+      name: "苏烟",
+      sub: "金砂 · 柔和",
+      pack: ["#8b1a1a", "#5a1010"],
+      stripe: "#c9a227",
+      filter: ["#c9a227", "#a07e18"],
+      paper: "#f2eadc",
+      tipGlow: "#ff8a4a",
+      burnRate: 0.9,
+      ashStick: 1.2,
+    },
+    {
+      id: "yunyan",
+      name: "云烟",
+      sub: "软珍品 · 绵柔",
+      pack: ["#a61c1c", "#6e1010"],
+      stripe: "#f0e0a0",
+      filter: ["#e0c8a0", "#c0a880"],
+      paper: "#f7f0e4",
+      tipGlow: "#ff7538",
+      burnRate: 1.0,
+      ashStick: 1.05,
+    },
+    {
+      id: "hongtashan",
+      name: "红塔山",
+      sub: "经典 · 回忆",
+      pack: ["#d4d0c8", "#a8a49c"],
+      stripe: "#c41e1e",
+      filter: ["#e8d8b8", "#c8b898"],
+      paper: "#faf6ee",
+      tipGlow: "#ff8040",
+      burnRate: 1.15,
+      ashStick: 0.85,
+    },
+    {
+      id: "daqianmen",
+      name: "大前门",
+      sub: "短支 · 老味",
+      pack: ["#2a2824", "#141210"],
+      stripe: "#c9a227",
+      filter: ["#d0c0a0", "#b0a080"],
+      paper: "#f0e8d8",
+      tipGlow: "#ff7030",
+      burnRate: 1.2,
+      ashStick: 0.9,
+    },
+    {
+      id: "xiongmao",
+      name: "熊猫",
+      sub: "硬特 · 珍品",
+      pack: ["#1a5c3a", "#0c3a24"],
+      stripe: "#e8e4d8",
+      filter: ["#e0d8c0", "#c0b8a0"],
+      paper: "#f8f4ea",
+      tipGlow: "#ff9a55",
+      burnRate: 0.85,
+      ashStick: 1.25,
+    },
+    {
+      id: "marlboro",
+      name: "万宝路",
+      sub: "Marlboro Red",
+      pack: ["#d42020", "#a01010"],
+      stripe: "#f5f0e8",
+      filter: ["#e8d4a8", "#c8b488"],
+      paper: "#f7f3ea",
+      tipGlow: "#ff6b2c",
+      burnRate: 1.1,
+      ashStick: 0.95,
+    },
+    {
+      id: "sevenstars",
+      name: "七星",
+      sub: "Mild Seven · 淡",
+      pack: ["#6a9ec8", "#3a6e9c"],
+      stripe: "#f0f4f8",
+      filter: ["#e8f0f8", "#c8d8e8"],
+      paper: "#faf8f4",
+      tipGlow: "#ffa060",
+      burnRate: 0.9,
+      ashStick: 1.1,
+    },
+  ];
+
+  // ── state ───────────────────────────────────────────────
+  const state = {
+    brand: BRANDS[0],
+    length: 1.0, // 1 = full cigarette
+    ash: 0, // 0..1 of max ash column
+    lit: false,
+    burn: 0, // accumulated burn units
+    suck: 0, // current inhale strength 0..1
+    suckSmooth: 0,
+    micOn: false,
+    ambient: 0.02,
+    lastInhale: 0,
+    inhaleCount: 0,
+    particles: [],
+    ashFalling: [],
+    time: 0,
+  };
+
+  const MAX_ASH = 0.28; // max ash length relative to cigarette height
+  // length units per second
+  const IDLE_BURN = 0.01; // ~100s smolder if left alone
+  const INHALE_BURN = 0.055; // strong continuous inhale finishes in ~15–20s
+
+  // ── dom ─────────────────────────────────────────────────
+  const canvas = document.getElementById("scene");
+  const ctx = canvas.getContext("2d", { alpha: true });
+  const el = {
+    brandChip: document.getElementById("brandChip"),
+    brandSwatch: document.getElementById("brandSwatch"),
+    brandName: document.getElementById("brandName"),
+    lenValue: document.getElementById("lenValue"),
+    ashBar: document.getElementById("ashBar"),
+    suckBar: document.getElementById("suckBar"),
+    btnMic: document.getElementById("btnMic"),
+    btnShake: document.getElementById("btnShake"),
+    btnBrand: document.getElementById("btnBrand"),
+    status: document.getElementById("status"),
+    hint: document.getElementById("hint"),
+    hintText: document.getElementById("hintText"),
+    sheet: document.getElementById("brandSheet"),
+    backdrop: document.getElementById("sheetBackdrop"),
+    grid: document.getElementById("brandGrid"),
+    btnCloseSheet: document.getElementById("btnCloseSheet"),
+    app: document.getElementById("app"),
+  };
+
+  function setStatus(text, kind) {
+    el.status.textContent = text;
+    el.status.classList.remove("live", "warn");
+    if (kind) el.status.classList.add(kind);
+  }
+
+  function setHint(text, hide) {
+    if (text) el.hintText.textContent = text;
+    el.hint.classList.toggle("hidden", !!hide);
+  }
+
+  // ── canvas sizing ───────────────────────────────────────
+  let W = 0;
+  let H = 0;
+  let DPR = 1;
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = rect.width;
+    H = rect.height;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ── brand UI ────────────────────────────────────────────
+  function packStyle(brand) {
+    return `linear-gradient(145deg, ${brand.pack[0]}, ${brand.pack[1]})`;
+  }
+
+  function applyBrand(brand, relight) {
+    state.brand = brand;
+    el.brandName.textContent = brand.name;
+    el.brandSwatch.style.background = packStyle(brand);
+    document.querySelectorAll(".brand-card").forEach((card) => {
+      card.classList.toggle("active", card.dataset.id === brand.id);
+    });
+    state.length = 1;
+    state.ash = 0;
+    state.burn = 0;
+    state.lit = !!relight;
+    state.particles.length = 0;
+    state.ashFalling.length = 0;
+    if (relight) {
+      setStatus(`「${brand.name}」已点燃 · 吸气会加速燃烧`, "live");
+      setHint(
+        state.micOn
+          ? "对着手机底部轻吸 · 晃动手机抖落烟灰"
+          : "点「抖灰」或晃动手机 · 可开麦克风用吸气点烟",
+        false
+      );
+    }
+  }
+
+  function buildBrandGrid() {
+    const frag = document.createDocumentFragment();
+    BRANDS.forEach((b) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "brand-card";
+      btn.dataset.id = b.id;
+      btn.innerHTML = `
+        <span class="pack" style="background:${packStyle(b)}">
+          <span class="pack-stripe" style="background:${b.stripe}"></span>
+        </span>
+        <span class="brand-meta">
+          <strong>${b.name}</strong>
+          <span>${b.sub}</span>
+        </span>
+      `;
+      btn.addEventListener("click", () => {
+        applyBrand(b, true);
+        closeSheet();
+      });
+      frag.appendChild(btn);
+    });
+    el.grid.appendChild(frag);
+  }
+
+  function openSheet() {
+    el.backdrop.hidden = false;
+    el.sheet.hidden = false;
+  }
+
+  function closeSheet() {
+    el.backdrop.hidden = true;
+    el.sheet.hidden = true;
+  }
+
+  el.btnBrand.addEventListener("click", openSheet);
+  el.brandChip.addEventListener("click", openSheet);
+  el.btnCloseSheet.addEventListener("click", closeSheet);
+  el.backdrop.addEventListener("click", closeSheet);
+
+  buildBrandGrid();
+  applyBrand(BRANDS[0], true);
+
+  // ── mic / inhale detection ──────────────────────────────
+  let audioCtx = null;
+  let analyser = null;
+  let micStream = null;
+  let timeData = null;
+  let freqData = null;
+  let rafId = 0;
+
+  async function startMic() {
+    if (state.micOn) {
+      stopMic();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus("当前环境不支持麦克风 · 请用手机浏览器打开", "warn");
+      setHint("可先用「抖灰」和品牌切换体验", true);
+      return;
+    }
+
+    try {
+      setStatus("正在请求麦克风权限…");
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      });
+
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+
+      const source = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.55;
+      source.connect(analyser);
+
+      timeData = new Uint8Array(analyser.fftSize);
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+
+      state.micOn = true;
+      el.btnMic.setAttribute("aria-pressed", "true");
+      el.btnMic.textContent = "关麦克风";
+      setStatus("麦克风已开启 · 对着手机底部轻吸", "live");
+      setHint("吸气时烟头会亮起 · 晃动手机抖落烟灰", true);
+      sampleAmbient();
+    } catch (err) {
+      console.warn(err);
+      setStatus("麦克风被拒绝或不可用", "warn");
+      setHint("请在浏览器设置中允许麦克风，或点「抖灰」模拟", false);
+    }
+  }
+
+  function stopMic() {
+    state.micOn = false;
+    el.btnMic.setAttribute("aria-pressed", "false");
+    el.btnMic.textContent = "开麦克风";
+    setStatus("麦克风已关闭 · 可用「抖灰」继续", null);
+    if (micStream) {
+      micStream.getTracks().forEach((t) => t.stop());
+      micStream = null;
+    }
+    if (audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+    }
+    analyser = null;
+    state.suck = 0;
+    state.suckSmooth = 0;
+  }
+
+  /** Calibrate ambient noise floor briefly. */
+  function sampleAmbient() {
+    if (!analyser) return;
+    let sum = 0;
+    const n = 30;
+    for (let i = 0; i < n; i++) {
+      analyser.getByteTimeDomainData(timeData);
+      sum += rmsFromTime(timeData);
+    }
+    state.ambient = Math.max(0.01, sum / n);
+  }
+
+  function rmsFromTime(arr) {
+    let acc = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const v = (arr[i] - 128) / 128;
+      acc += v * v;
+    }
+    return Math.sqrt(acc / arr.length);
+  }
+
+  /**
+   * Inhale signature: broadband energy rise + mid-band emphasis,
+   * above adaptive ambient floor.
+   */
+  function detectInhale() {
+    if (!analyser || !state.micOn) {
+      state.suck *= 0.92;
+      return;
+    }
+
+    analyser.getByteTimeDomainData(timeData);
+    analyser.getByteFrequencyData(freqData);
+
+    const rms = rmsFromTime(timeData);
+
+    // mid-band ratio (bins ~80–400 Hz → indices roughly 4–20 at 44.1k / 1024)
+    let mid = 0;
+    let total = 0;
+    for (let i = 2; i < 48; i++) {
+      const v = freqData[i] / 255;
+      total += v;
+      if (i >= 4 && i <= 24) mid += v;
+    }
+    const midRatio = total > 0.01 ? mid / total : 0;
+
+    // adaptive floor
+    state.ambient = state.ambient * 0.985 + rms * 0.015;
+    const floor = state.ambient * 2.4 + 0.018;
+
+    let strength = 0;
+    if (rms > floor) {
+      strength = Math.min(1, (rms - floor) / 0.22);
+      // broadband inhale scores higher mid ratio
+      strength *= 0.55 + midRatio * 0.9;
+      strength = Math.max(0, Math.min(1, strength));
+    }
+
+    state.suck = strength;
+    state.suckSmooth += (state.suck - state.suckSmooth) * (state.suck > state.suckSmooth ? 0.35 : 0.08);
+
+    const now = performance.now();
+    if (state.suckSmooth > 0.32 && now - state.lastInhale > 280) {
+      state.lastInhale = now;
+      state.inhaleCount++;
+      if (!state.lit) {
+        state.lit = true;
+        setStatus(`「${state.brand.name}」已点燃 · 继续吸`, "live");
+        setHint("", true);
+      }
+    }
+  }
+
+  el.btnMic.addEventListener("click", startMic);
+
+  // ── shake / ash drop ────────────────────────────────────
+  let lastAcc = null;
+  let lastShake = 0;
+  let motionBound = false;
+
+  async function enableMotion() {
+    if (motionBound) return true;
+
+    // iOS 13+ permission
+    if (
+      typeof DeviceMotionEvent !== "undefined" &&
+      typeof DeviceMotionEvent.requestPermission === "function"
+    ) {
+      try {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res !== "granted") {
+          setStatus("未获得动作权限 · 可点「抖灰」按钮", "warn");
+          return false;
+        }
+      } catch {
+        return false;
+      }
+    }
+
+    window.addEventListener("devicemotion", onMotion, { passive: true });
+    motionBound = true;
+    return true;
+  }
+
+  function onMotion(e) {
+    const a = e.accelerationIncludingGravity || e.acceleration;
+    if (!a || a.x == null) return;
+
+    const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+    if (lastAcc == null) {
+      lastAcc = mag;
+      return;
+    }
+    const delta = Math.abs(mag - lastAcc);
+    lastAcc = lastAcc * 0.8 + mag * 0.2;
+
+    const now = performance.now();
+    // threshold tuned for handheld shake
+    if (delta > 14 && now - lastShake > 450) {
+      lastShake = now;
+      shakeOffAsh(true);
+    }
+  }
+
+  function shakeOffAsh(fromMotion) {
+    const brand = state.brand;
+    const amount = state.ash;
+    if (amount < 0.04) {
+      if (fromMotion) return;
+      setStatus("烟灰还很少，再吸几口", null);
+      return;
+    }
+
+    // spawn falling ash particles
+    const count = Math.floor(8 + amount * 28);
+    const cig = cigaretteLayout();
+    for (let i = 0; i < count; i++) {
+      const y0 = cig.tipY + Math.random() * cig.ashH;
+      state.ashFalling.push({
+        x: cig.cx + (Math.random() - 0.5) * cig.bodyW * 0.7,
+        y: y0,
+        vx: (Math.random() - 0.5) * 2.4,
+        vy: 0.4 + Math.random() * 1.6,
+        r: 1 + Math.random() * 2.2,
+        life: 1,
+        rot: Math.random() * Math.PI,
+      });
+    }
+
+    state.ash = 0;
+    el.app.classList.remove("shaking");
+    // reflow for retrigger
+    void el.app.offsetWidth;
+    el.app.classList.add("shaking");
+    setTimeout(() => el.app.classList.remove("shaking"), 400);
+
+    setStatus(`抖落了「${brand.name}」的烟灰`, "live");
+  }
+
+  el.btnShake.addEventListener("click", async () => {
+    await enableMotion();
+    shakeOffAsh(false);
+  });
+
+  // first user gesture enables motion + mic hint
+  async function unlockSensors() {
+    await enableMotion();
+    window.removeEventListener("pointerdown", unlockSensors);
+  }
+  window.addEventListener("pointerdown", unlockSensors, { once: true });
+
+  // ── cigarette geometry ──────────────────────────────────
+  function cigaretteLayout() {
+    // vertical cigarette, slightly above bottom controls
+    const bodyH = Math.min(H * 0.42, 320);
+    const bodyW = Math.max(28, Math.min(38, W * 0.085));
+    const filterH = bodyH * 0.32;
+    const cx = W * 0.5;
+    const bottomY = H * 0.72; // filter bottom near controls
+    const topY = bottomY - bodyH * state.length;
+    const ashH = state.ash * MAX_ASH * bodyH;
+    const tipY = topY + ashH; // burn line under ash
+
+    return {
+      cx,
+      bottomY,
+      topY,
+      tipY,
+      bodyH,
+      bodyW,
+      filterH,
+      ashH,
+      // paper starts above filter
+      filterTop: bottomY - filterH,
+      paperTop: topY,
+    };
+  }
+
+  // ── drawing ─────────────────────────────────────────────
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    const brand = state.brand;
+    const g = cigaretteLayout();
+    const t = state.time;
+    const suck = state.suckSmooth;
+    const lit = state.lit && state.length > 0.02;
+
+    // ambient room glow when lit
+    if (lit) {
+      const glowR = 90 + suck * 70 + Math.sin(t * 2.2) * 4;
+      const grd = ctx.createRadialGradient(g.cx, g.tipY, 4, g.cx, g.tipY, glowR);
+      const a = 0.1 + suck * 0.22;
+      grd.addColorStop(0, `rgba(255, 120, 50, ${a})`);
+      grd.addColorStop(0.35, `rgba(255, 80, 30, ${a * 0.35})`);
+      grd.addColorStop(1, "rgba(255, 60, 20, 0)");
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(g.cx, g.tipY, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // shadow under filter
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.filter = "blur(8px)";
+    ctx.beginPath();
+    ctx.ellipse(g.cx, g.bottomY + 6, g.bodyW * 0.9, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    const half = g.bodyW / 2;
+    const left = g.cx - half;
+
+    // filter
+    const fTop = g.filterTop;
+    const fH = g.bottomY - fTop;
+    if (fH > 2) {
+      const fGrd = ctx.createLinearGradient(left, 0, left + g.bodyW, 0);
+      fGrd.addColorStop(0, shade(brand.filter[0], -18));
+      fGrd.addColorStop(0.35, brand.filter[0]);
+      fGrd.addColorStop(0.7, brand.filter[1]);
+      fGrd.addColorStop(1, shade(brand.filter[0], -28));
+      ctx.fillStyle = fGrd;
+      roundRect(left, fTop, g.bodyW, fH + 1, 4);
+      ctx.fill();
+
+      // filter dots
+      ctx.fillStyle = "rgba(0,0,0,0.12)";
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(left + 4, fTop + 8 + i * 6, g.bodyW - 8, 1);
+      }
+
+      // gold band
+      const bandY = fTop - 2;
+      ctx.fillStyle = brand.stripe;
+      ctx.fillRect(left, bandY, g.bodyW, 4);
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.fillRect(left, bandY, g.bodyW, 1);
+    }
+
+    // paper body (from filter top up to tipY)
+    const paperTop = g.tipY;
+    const paperH = fTop - paperTop;
+    if (paperH > 2) {
+      const pGrd = ctx.createLinearGradient(left, 0, left + g.bodyW, 0);
+      pGrd.addColorStop(0, shade(brand.paper, -16));
+      pGrd.addColorStop(0.4, brand.paper);
+      pGrd.addColorStop(1, shade(brand.paper, -24));
+      ctx.fillStyle = pGrd;
+      roundRect(left, paperTop, g.bodyW, paperH, 3);
+      ctx.fill();
+
+      // subtle paper seam
+      ctx.strokeStyle = "rgba(0,0,0,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left + g.bodyW * 0.55, paperTop + 4);
+      ctx.lineTo(left + g.bodyW * 0.55, fTop - 4);
+      ctx.stroke();
+    }
+
+    // ember ring at burn line
+    if (lit) {
+      const pulse = 0.65 + suck * 0.55 + Math.sin(t * 6) * 0.06;
+      const eGrd = ctx.createRadialGradient(g.cx, paperTop, 1, g.cx, paperTop, half * 1.8);
+      eGrd.addColorStop(0, `rgba(255, 220, 160, ${0.95 * pulse})`);
+      eGrd.addColorStop(0.25, brand.tipGlow);
+      eGrd.addColorStop(0.55, `rgba(180, 40, 10, ${0.85 * pulse})`);
+      eGrd.addColorStop(1, "rgba(40, 10, 5, 0)");
+      ctx.fillStyle = eGrd;
+      ctx.beginPath();
+      ctx.ellipse(g.cx, paperTop, half * 1.35, half * 0.95, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // bright core
+      ctx.fillStyle = `rgba(255, 245, 210, ${0.55 + suck * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(g.cx, paperTop, half * 0.35, half * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ash column above tip
+    if (g.ashH > 2) {
+      const aTop = paperTop - g.ashH;
+      const aGrd = ctx.createLinearGradient(left, 0, left + g.bodyW, 0);
+      aGrd.addColorStop(0, "#3a3632");
+      aGrd.addColorStop(0.4, "#6b6560");
+      aGrd.addColorStop(0.75, "#524e4a");
+      aGrd.addColorStop(1, "#2e2c2a");
+      ctx.fillStyle = aGrd;
+      // slightly irregular ash silhouette
+      ctx.beginPath();
+      const w = half * (1.02 - state.ash * 0.25);
+      ctx.moveTo(g.cx - w, paperTop);
+      ctx.quadraticCurveTo(g.cx - w * 1.08, paperTop - g.ashH * 0.5, g.cx - w * 0.82, aTop);
+      ctx.lineTo(g.cx + w * 0.82, aTop);
+      ctx.quadraticCurveTo(g.cx + w * 1.08, paperTop - g.ashH * 0.5, g.cx + w, paperTop);
+      ctx.closePath();
+      ctx.fill();
+
+      // ash cracks
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(g.cx - w * 0.4, paperTop - g.ashH * 0.4);
+      ctx.lineTo(g.cx + w * 0.2, paperTop - g.ashH * 0.55);
+      ctx.moveTo(g.cx - w * 0.15, paperTop - g.ashH * 0.75);
+      ctx.lineTo(g.cx + w * 0.5, paperTop - g.ashH * 0.7);
+      ctx.stroke();
+    }
+
+    // falling ash
+    for (const p of state.ashFalling) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = "#5a554f";
+      ctx.fillRect(-p.r, -p.r * 0.6, p.r * 2, p.r * 1.2);
+      ctx.restore();
+    }
+
+    // smoke particles
+    for (const p of state.particles) {
+      const a = Math.max(0, p.life) * p.alpha;
+      if (a < 0.01) continue;
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(210, 210, 200, ${a})`;
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // brand name floating near cigarette (subtle)
+    if (state.length > 0.05) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = brand.stripe;
+      ctx.font = "500 10px 'Songti SC', STSong, SimSun, serif";
+      ctx.textAlign = "center";
+      ctx.fillText(brand.name, g.cx, g.filterTop + fH * 0.55);
+      ctx.restore();
+    }
+  }
+
+  function shade(hex, amt) {
+    const c = hex.replace("#", "");
+    const n = parseInt(c, 16);
+    let r = (n >> 16) + amt;
+    let g = ((n >> 8) & 0xff) + amt;
+    let b = (n & 0xff) + amt;
+    r = Math.max(0, Math.min(255, r));
+    g = Math.max(0, Math.min(255, g));
+    b = Math.max(0, Math.min(255, b));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // ── particles ───────────────────────────────────────────
+  function spawnSmoke(n, strength) {
+    const g = cigaretteLayout();
+    for (let i = 0; i < n; i++) {
+      const fromTip = state.ash > 0.02 ? g.tipY : g.tipY;
+      state.particles.push({
+        x: g.cx + (Math.random() - 0.5) * g.bodyW * 0.5,
+        y: fromTip - Math.random() * 4,
+        vx: (Math.random() - 0.5) * (0.35 + strength * 0.9),
+        vy: -0.55 - Math.random() * 1.2 - strength * 1.6,
+        r: 2 + Math.random() * 5 + strength * 4,
+        life: 1,
+        alpha: 0.1 + Math.random() * 0.12 + strength * 0.1,
+        wobble: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    const t = state.time;
+    // smoke
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.wobble += dt * 2.2;
+      p.x += p.vx + Math.sin(p.wobble) * 0.25;
+      p.y += p.vy;
+      p.vy *= 0.995;
+      p.r += dt * 6;
+      p.life -= dt * 0.28;
+      if (p.life <= 0 || p.y < -30) state.particles.splice(i, 1);
+    }
+
+    // falling ash
+    for (let i = state.ashFalling.length - 1; i >= 0; i--) {
+      const p = state.ashFalling[i];
+      p.vy += 3.8 * dt * 60 * 0.016; // gravity
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.98;
+      p.rot += 0.08;
+      p.life -= dt * 0.55;
+      if (p.life <= 0 || p.y > H + 20) state.ashFalling.splice(i, 1);
+    }
+
+    // cap particle counts
+    if (state.particles.length > 120) state.particles.splice(0, state.particles.length - 120);
+    if (state.ashFalling.length > 80) state.ashFalling.splice(0, state.ashFalling.length - 80);
+  }
+
+  // ── simulation tick ─────────────────────────────────────
+  function update(dt) {
+    detectInhale();
+
+    const brand = state.brand;
+    const suck = state.suckSmooth;
+
+    if (state.lit && state.length > 0) {
+      // burn faster on inhale (length units / second)
+      const burn = (IDLE_BURN + INHALE_BURN * suck) * brand.burnRate;
+      state.burn += burn * dt;
+      state.length = Math.max(0, state.length - burn * dt);
+
+      // ash accumulates while burning (~8–15s of active smoking to fill)
+      const ashGain = (0.03 + suck * 0.09) * brand.ashStick * dt;
+      state.ash = Math.min(1, state.ash + ashGain);
+
+      // long ash under strong inhale may crack off naturally
+      if (state.ash > 0.92 && suck > 0.7) {
+        shakeOffAsh(true);
+      }
+
+      // spawn smoke: idle wisps + inhale plume
+      if (suck > 0.2) {
+        spawnSmoke(Math.floor(1 + suck * 4), suck);
+      } else if (Math.random() < 0.08) {
+        spawnSmoke(1, 0.15);
+      }
+
+      if (state.length <= 0.01 && state.lit) {
+        state.lit = false;
+        state.length = 0;
+        setStatus("烟抽完了 · 换一根吧", null);
+        setHint("点「换烟」选择新的品牌", false);
+      }
+    }
+
+    updateParticles(dt);
+
+    // UI meters
+    el.lenValue.textContent = `${Math.round(state.length * 100)}%`;
+    el.ashBar.style.width = `${Math.round(state.ash * 100)}%`;
+    el.suckBar.style.width = `${Math.round(Math.min(1, suck) * 100)}%`;
+  }
+
+  // ── main loop ───────────────────────────────────────────
+  let lastTs = 0;
+
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.05) dt = 0.05;
+    state.time += dt;
+
+    update(dt);
+    draw();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  rafId = requestAnimationFrame(frame);
+
+  // keyboard shortcut for desktop testing: space = shake
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+      e.preventDefault();
+      shakeOffAsh(false);
+    }
+  });
+
+  // tap scene to light (covers no-mic / desktop)
+  canvas.style.pointerEvents = "auto";
+  canvas.addEventListener("pointerdown", () => {
+    if (state.length <= 0) return;
+    if (!state.lit) {
+      state.lit = true;
+      setStatus(`「${state.brand.name}」已点燃 · 吸气会加速`, "live");
+      setHint("对着手机底部轻吸 · 晃动手机抖落烟灰", false);
+    }
+  });
+
+  // cleanup on page hide
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state.micOn) {
+      // keep mic but resume audio on return
+    } else if (!document.hidden && audioCtx?.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+  });
+})();
+  </script>
+</body>
+</html>
